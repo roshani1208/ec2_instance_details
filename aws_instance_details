@@ -1,0 +1,58 @@
+- name: gather facts about an EC2
+  ec2_instance_info:
+    filters:
+#      instance-state-name: ["running", "stopping", "stopped" ]
+      instance-state-name: [ "running" ]
+    region: "{{ item.region }}"
+    aws_access_key: "{{ aws_access_key }}"
+    aws_secret_key: "{{ aws_secret_key }}"
+  register: ec2facts
+  ignore_errors: yes
+  with_items: "{{ configurations }}"
+
+#- name: RESULT OUTPUT
+#  debug: var=ec2facts
+
+- name: RESULT OUTPUT FAILURE
+  set_fact:
+     endstate: "Unable to Get the Instance Details"
+  delegate_to: localhost
+  ignore_errors: yes
+  when:
+     - ec2facts.results[0].failed == true
+
+- name: RESULT OUTPUT
+  debug: var=endstate
+  ignore_errors: yes
+  when:
+     - ec2facts.results[0].failed == true
+
+- name: copy the failed output in json
+  copy:
+    content={{ endstate }} dest=/ansible_playbooks/workspace/Continuous_Integration/usecases/IDOPUSECASES/{{ job_name }}/reports/{{ job_name }}_{{ build_number }}.csv
+  ignore_errors: yes
+  when:
+     - ec2facts.results[0].failed == true
+
+- name: copy the output in json
+  copy:
+    content={{ec2facts}} dest=/ansible_playbooks/workspace/Continuous_Integration/usecases/IDOPUSECASES/{{ job_name }}/reports/{{ job_name }}_{{ build_number }}_result.json
+  when:
+     - ec2facts.results[0].failed == false
+
+
+- name: EC2 CSV file Creation
+  become: yes
+  become_method: sudo
+  shell: python3 /ansible_playbooks/workspace/Continuous_Integration/usecases/IDOPUSECASES/{{ job_name }}/scripts/python/generate_csv.py /ansible_playbooks/workspace/Continuous_Integration/usecases/IDOPUSECASES/{{ job_name }}/reports/{{ job_name }}_{{ build_number }}_result.json {{ job_name }} {{ build_number }}
+  register: report_out
+  delegate_to: localhost
+  when:
+     - ec2facts.results[0].failed == false
+
+
+- debug: var=report_out.changed
+  when:
+     - ec2facts.results[0].failed == false
+
+
